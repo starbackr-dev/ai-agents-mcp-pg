@@ -290,3 +290,250 @@ Each database maintains its own connection pool. Monitor them individually:
 6. **Resource Management**: Consider the total connection load across all databases
 
 This multi-database setup enables flexible data access patterns while maintaining the security and performance benefits of the MCP protocol.
+
+## Connecting LLMs and Claude Desktop
+
+### Claude Desktop Configuration
+
+To connect Claude Desktop to this MCP PostgreSQL server, add the following configuration to your Claude Desktop MCP settings:
+
+#### Single Database Mode
+```json
+{
+  "mcpServers": {
+    "postgres": {
+      "command": "node",
+      "args": ["/path/to/ai-agents-mcp-pg/src/dist/index.js", "postgresql://user:password@localhost:5432/database", "3000"],
+      "env": {}
+    }
+  }
+}
+```
+
+#### Multiple Database Mode
+```json
+{
+  "mcpServers": {
+    "postgres-multi": {
+      "command": "node", 
+      "args": ["/path/to/ai-agents-mcp-pg/src/dist/index.js", "--config", "/path/to/databases.json", "3000"],
+      "env": {}
+    }
+  }
+}
+```
+
+### Remote Server Connection (SSE)
+
+When the MCP server is running on a remote server, use Server-Sent Events (SSE) transport for connection:
+
+#### Claude Desktop Configuration for Remote Server
+```json
+{
+  "mcpServers": {
+    "postgres-remote": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-sse", "http://your-server.com:3000/sse"],
+      "env": {}
+    }
+  }
+}
+```
+
+#### Starting MCP Server with SSE Support
+
+On your remote server, start the MCP server with SSE enabled:
+
+```bash
+# Single database mode with SSE
+node src/dist/index.js "postgresql://user:password@localhost:5432/database" 3000 --transport=sse
+
+# Multi-database mode with SSE  
+node src/dist/index.js --config databases.json 3000 --transport=sse
+```
+
+#### Connection Details for Remote Access
+- **Protocol**: MCP over SSE (Server-Sent Events)
+- **URL**: `http://your-server.com:3000/sse`
+- **Transport**: SSE
+- **Authentication**: Optional (configure as needed)
+
+### Local Connection (stdio)
+
+For local connections, use stdio transport:
+
+#### Connection Details
+- **Protocol**: MCP (Model Context Protocol)
+- **Host**: localhost
+- **Port**: 3000 (or your configured port)
+- **Transport**: stdio (standard input/output)
+
+#### Example for MCP Client Libraries
+
+**Local Connection (stdio):**
+```javascript
+import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
+
+const transport = new StdioClientTransport({
+  command: 'node',
+  args: ['/path/to/ai-agents-mcp-pg/src/dist/index.js', '--config', '/path/to/databases.json', '3000']
+});
+
+const client = new Client({
+  name: "postgres-client",
+  version: "1.0.0"
+}, {
+  capabilities: {}
+});
+
+await client.connect(transport);
+```
+
+**Remote Connection (SSE):**
+```javascript
+import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
+
+const transport = new SSEClientTransport(
+  new URL('http://your-server.com:3000/sse')
+);
+
+const client = new Client({
+  name: "postgres-remote-client", 
+  version: "1.0.0"
+}, {
+  capabilities: {}
+});
+
+await client.connect(transport);
+```
+
+### Setup Steps
+
+1. **Build the MCP Server**:
+   ```bash
+   cd /path/to/ai-agents-mcp-pg
+   npm run build
+   ```
+
+2. **Create Database Configuration** (for multi-database mode):
+   Create your `databases.json` file with your database connections.
+
+3. **Test Connection**:
+   ```bash
+   # Local connection tests
+   node src/dist/index.js "postgresql://user:password@localhost:5432/database" 3000
+   node src/dist/index.js --config databases.json 3000
+   
+   # Remote server tests (with SSE)
+   node src/dist/index.js "postgresql://user:password@localhost:5432/database" 3000 --transport=sse
+   node src/dist/index.js --config databases.json 3000 --transport=sse
+   ```
+
+4. **Configure Your LLM Client**:
+   Add the MCP server configuration to your LLM client (Claude Desktop, etc.)
+
+5. **Restart Your LLM Client**:
+   Restart Claude Desktop or your LLM client to load the new MCP server configuration.
+
+### Available Capabilities
+
+Once connected, your LLM will have access to:
+
+- **Database Operations**: Query, insert, update, delete data across all configured databases
+- **Schema Management**: Create/modify tables, indexes, and database structures  
+- **Health Monitoring**: Check database performance and connection status
+- **Multi-Database Support**: Switch between different databases seamlessly
+- **Security**: All operations respect PostgreSQL permissions and connection security
+
+### Production Deployment for Remote Access
+
+#### Reverse Proxy Configuration (Nginx)
+
+For production deployments, use a reverse proxy:
+
+```nginx
+server {
+    listen 80;
+    server_name your-mcp-server.com;
+    
+    location /sse {
+        proxy_pass http://localhost:3000/sse;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_cache_bypass $http_upgrade;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        
+        # SSE specific settings
+        proxy_buffering off;
+        proxy_read_timeout 24h;
+    }
+}
+```
+
+#### SSL/HTTPS Configuration
+
+For secure connections, configure SSL:
+
+```nginx
+server {
+    listen 443 ssl;
+    server_name your-mcp-server.com;
+    
+    ssl_certificate /path/to/certificate.crt;
+    ssl_certificate_key /path/to/private.key;
+    
+    location /sse {
+        proxy_pass http://localhost:3000/sse;
+        # ... same proxy settings as above
+    }
+}
+```
+
+Update Claude Desktop configuration for HTTPS:
+```json
+{
+  "mcpServers": {
+    "postgres-secure": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-sse", "https://your-mcp-server.com/sse"],
+      "env": {}
+    }
+  }
+}
+```
+
+#### Firewall Configuration
+
+Open the necessary ports:
+```bash
+# Allow HTTP/HTTPS traffic
+sudo ufw allow 80
+sudo ufw allow 443
+
+# Allow direct MCP port (if not using reverse proxy)
+sudo ufw allow 3000
+```
+
+### Troubleshooting Connection Issues
+
+#### Local Connections (stdio)
+1. **Build Issues**: Ensure `npm run build` completes successfully
+2. **Database Connectivity**: Test your PostgreSQL connections independently
+3. **Port Conflicts**: Make sure port 3000 (or your chosen port) is available
+4. **Permissions**: Verify file permissions on configuration files
+5. **Logs**: Check your LLM client logs for MCP connection errors
+
+#### Remote Connections (SSE)
+1. **Network Connectivity**: Verify the remote server is accessible on the specified port
+2. **Firewall Rules**: Ensure firewall allows connections on port 3000 (or your configured port)
+3. **SSE Support**: Confirm the MCP server is started with `--transport=sse` flag
+4. **CORS Issues**: If connecting from browser-based clients, ensure CORS is properly configured
+5. **Proxy Configuration**: If using a reverse proxy, verify the proxy configuration is correct
+6. **SSL Certificate**: For HTTPS connections, ensure SSL certificates are valid and properly configured
+7. **Connection Timeout**: SSE connections may timeout; check proxy and server timeout settings

@@ -1134,11 +1134,8 @@ async function runServer() {
       transports.delete(sessionId);
     });
     
-    // Connect the server to this transport
+    // Connect the server to this transport (this automatically starts the transport)
     server.connect(transport).catch(console.error);
-    
-    // Start the SSE connection
-    transport.start();
   });
   
   // POST endpoint for receiving messages
