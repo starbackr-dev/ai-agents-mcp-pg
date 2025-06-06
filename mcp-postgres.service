@@ -1,0 +1,43 @@
+[Unit]
+Description=MCP PostgreSQL Server
+Documentation=https://modelcontextprotocol.io
+After=network.target postgresql.service
+Wants=postgresql.service
+
+[Service]
+Type=simple
+User=mcp-postgres
+Group=mcp-postgres
+WorkingDirectory=/opt/mcp-postgres
+ExecStart=/usr/bin/node /opt/mcp-postgres/src/dist/index.js "${DATABASE_URL}" "${PORT}"
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=mcp-postgres
+
+# Environment variables
+Environment=NODE_ENV=production
+Environment=PORT=3000
+Environment=DATABASE_URL=postgresql://mcp_user:your_password@localhost:5432/mcp_database
+
+# Security settings
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/mcp-postgres/logs
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+
+# Resource limits
+LimitNOFILE=65536
+LimitNPROC=4096
+
+# Health check
+TimeoutStartSec=30
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target
